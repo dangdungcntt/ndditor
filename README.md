@@ -15,7 +15,7 @@ Each line of text is stored in a gap buffer, that optimizes for the common case 
 ## Installation
 
 ```bash
-go get github.com/dangdungcntt/ndditor
+go install github.com/dangdungcntt/ndditor
 ```
 
 ## Usage
