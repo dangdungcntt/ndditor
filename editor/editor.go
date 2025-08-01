@@ -143,11 +143,11 @@ func (e *Editor) backspace() {
 }
 
 func (e *Editor) delete() {
-	if e.cursorX < e.lines[e.cursorY].Len() {
-		e.lines[e.cursorY].DeleteAfterCursor()
-	} else if e.cursorY < len(e.lines)-1 {
-		e.lines[e.cursorY].Append(e.lines[e.cursorY+1])
-		copy(e.lines[e.cursorY+1:], e.lines[e.cursorY+2:])
+	if e.cursorX < e.lines[e.lineIndex].Len() {
+		e.lines[e.lineIndex].DeleteAfterCursor()
+	} else if e.lineIndex < len(e.lines)-1 {
+		e.lines[e.lineIndex].Append(e.lines[e.lineIndex+1])
+		copy(e.lines[e.lineIndex+1:], e.lines[e.lineIndex+2:])
 		e.lines = e.lines[:len(e.lines)-1]
 	}
 }
