@@ -10,7 +10,7 @@ Simple vim-like text editor written in Go.
 
 ## Data Structure
 
-Each line of text is stored in a gap buffer, that optimizes for the common case of inserting and deleting characters in the middle of a line.
+Each line of text is stored in a gap buffer, which is optimized for the common case of inserting and deleting characters in the middle of a line.
 
 ## Installation
 
