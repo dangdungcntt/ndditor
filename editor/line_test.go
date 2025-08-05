@@ -7,9 +7,9 @@ import (
 	"testing"
 )
 
-func visualizeGapBuffer(g *GapBuffer) string {
+func visualizeGapBuffer(g *Line) string {
 	s := strings.Builder{}
-	for i, r := range g.buf {
+	for i, r := range g.data {
 		if i >= g.gapStart && i < g.gapEnd {
 			s.WriteString("_")
 		} else {
@@ -34,7 +34,7 @@ func collect2Entries[K any, V any](seq iter.Seq2[K, V]) []pair[K, V] {
 }
 
 func TestGap(t *testing.T) {
-	g := NewGapBuffer(5)
+	g := NewEmptyLine(5)
 	g.Insert('a')
 	g.Insert('b')
 	g.Insert('c')
@@ -63,7 +63,7 @@ func TestGap(t *testing.T) {
 }
 
 func TestGapRunes(t *testing.T) {
-	g := NewGapBuffer(5)
+	g := NewEmptyLine(5)
 	g.Insert('a')
 	g.Insert('b')
 	g.Insert('c')

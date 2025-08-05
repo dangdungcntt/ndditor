@@ -1,264 +1,155 @@
 package editor
 
 import (
-	"fmt"
+	"github.com/dangdungcntt/ndditor/editor/layout"
 	"github.com/gdamore/tcell/v2"
 	"strings"
 )
 
-const (
-	ModeView = iota
-	ModeInsert
-	ModeCommand
-)
-
 type Editor struct {
-	screen              tcell.Screen
-	mode                int
-	viewportH           int
-	viewportW           int
-	cursorX             int
-	cursorY             int
-	pendingCommand      []rune
-	lines               []*GapBuffer
-	lineIndex           int
-	finished            bool
-	defaultStyle        tcell.Style
-	cursorPositionStyle tcell.Style
+	screen tcell.Screen
+	state  *State
+	root   layout.Element
+	window *Window
 }
 
 func NewEditor(screen tcell.Screen) *Editor {
+	window := NewWindow()
+	tab := NewTab("new tab", NewEmptyLine(64))
+	window.AddTab(tab)
+	state := &State{
+		mode: ModeView,
+	}
 	return &Editor{
-		screen:              screen,
-		mode:                ModeView,
-		cursorX:             0,
-		cursorY:             0,
-		lines:               []*GapBuffer{NewGapBuffer(64)}, // start with one empty line
-		lineIndex:           0,
-		defaultStyle:        tcell.StyleDefault,
-		cursorPositionStyle: tcell.StyleDefault.Reverse(true),
+		screen: screen,
+		state:  state,
+		window: window,
+		root: &layout.Column{
+			Children: []layout.Element{
+				window,
+				state,
+			},
+		},
 	}
 }
 
-func (e *Editor) Run() {
-	e.refreshScreen()
+func (s *Editor) Run() {
+	s.refreshScreen()
 
 	for {
-		ev := e.screen.PollEvent()
+		ev := s.screen.PollEvent()
+
 		switch ev := ev.(type) {
 		case *tcell.EventResize:
-			e.screen.Sync()
-			e.refreshScreen()
+			s.screen.Sync()
+			s.refreshScreen()
 		case *tcell.EventKey:
 			switch ev.Key() {
 			case tcell.KeyCtrlC:
 				return
+			case tcell.KeyCtrlQ:
+				s.window.PreviousTab()
+			case tcell.KeyCtrlW:
+				s.window.CloseTab()
+			case tcell.KeyCtrlE:
+				s.window.NextTab()
+			case tcell.KeyCtrlT:
+				s.window.AddTab(NewTab("new tab", NewEmptyLine(64)))
 			case tcell.KeyEscape:
-				if e.mode != ModeView {
-					e.mode = ModeView
+				if !s.state.IsMode(ModeView) {
+					s.state.mode = ModeView
 					break
 				}
 			case tcell.KeyEnter:
-				if e.mode == ModeCommand {
-					e.executeCommand()
+				if s.state.IsMode(ModeCommand) {
+					s.executeCommand()
 					break
 				}
-				if e.mode == ModeInsert {
-					e.insertNewline()
+				if s.state.IsMode(ModeInsert) {
+					s.getActiveTab().InsertNewline()
 					break
 				}
 			case tcell.KeyBackspace, tcell.KeyBackspace2:
-				if e.mode == ModeCommand {
-					e.pendingCommand = e.pendingCommand[:len(e.pendingCommand)-1]
+				if s.state.IsMode(ModeCommand) {
+					s.state.DeleteLastRuneFromCommand()
 					break
 				}
-				if e.mode == ModeInsert {
-					e.backspace()
+				if s.state.IsMode(ModeInsert) {
+					s.getActiveTab().Backspace()
 					break
 				}
 			case tcell.KeyDelete:
-				if e.mode == ModeInsert {
-					e.delete()
+				if s.state.IsMode(ModeInsert) {
+					s.getActiveTab().Delete()
 					break
 				}
 			case tcell.KeyLeft:
-				e.moveCursor(-1, 0)
+				s.getActiveTab().MoveCursor(-1, 0)
 			case tcell.KeyRight:
-				e.moveCursor(1, 0)
+				s.getActiveTab().MoveCursor(1, 0)
 			case tcell.KeyUp:
-				e.moveCursor(0, -1)
+				s.getActiveTab().MoveCursor(0, -1)
 			case tcell.KeyDown:
-				e.moveCursor(0, 1)
+				s.getActiveTab().MoveCursor(0, 1)
 			default:
 				if ev.Rune() == 0 {
 					break
 				}
-				if e.mode == ModeView {
+				if s.state.IsMode(ModeView) {
 					switch ev.Rune() {
 					case 'i':
-						e.mode = ModeInsert
+						s.state.SetMode(ModeInsert)
 					case ':':
-						e.mode = ModeCommand
+						s.state.SetMode(ModeCommand)
 					}
 					break
 				}
-				if e.mode == ModeCommand {
-					e.pendingCommand = append(e.pendingCommand, ev.Rune())
+				if s.state.IsMode(ModeCommand) {
+					s.state.AppendToCommand(ev.Rune())
 					break
 				}
-				if e.mode == ModeInsert {
-					e.insertRune(ev.Rune())
+				if s.state.IsMode(ModeInsert) {
+					s.getActiveTab().InsertRune(ev.Rune())
+					break
 				}
 			}
-			e.refreshScreen()
+			s.refreshScreen()
 		}
-		if e.finished {
+		if s.state.IsFinished() {
 			return
 		}
 	}
 }
 
-func (e *Editor) insertRune(r rune) {
-	e.lines[e.lineIndex].Insert(r)
-	e.cursorX++
-}
-
-func (e *Editor) backspace() {
-	if e.cursorX > 0 {
-		e.lines[e.lineIndex].DeleteBeforeCursor()
-		e.cursorX--
-	} else if e.lineIndex > 0 {
-		aboveLine := e.lines[e.lineIndex-1]
-		e.cursorX = aboveLine.Len()
-		aboveLine.Append(e.lines[e.lineIndex])
-		aboveLine.moveCursor(e.cursorX)
-		copy(e.lines[e.lineIndex:], e.lines[e.lineIndex+1:])
-		e.lines = e.lines[:len(e.lines)-1]
-		e.lineIndex--
-		e.cursorY--
-		if e.cursorY < 0 {
-			e.cursorY = 0
-		}
-	}
-}
-
-func (e *Editor) delete() {
-	if e.cursorX < e.lines[e.lineIndex].Len() {
-		e.lines[e.lineIndex].DeleteAfterCursor()
-	} else if e.lineIndex < len(e.lines)-1 {
-		e.lines[e.lineIndex].Append(e.lines[e.lineIndex+1])
-		copy(e.lines[e.lineIndex+1:], e.lines[e.lineIndex+2:])
-		e.lines = e.lines[:len(e.lines)-1]
-	}
-}
-
-func (e *Editor) insertNewline() {
-	line := e.lines[e.lineIndex]
-	e.lineIndex++
-	e.cursorY++
-	if e.cursorY >= e.viewportH {
-		e.cursorY = e.viewportH - 1
-	}
-	newLineContent := line.CutAfterCursor()
-	var newLine *GapBuffer
-	if len(newLineContent) == 0 {
-		newLine = NewGapBuffer(64)
-	} else {
-		newLine = NewGapBufferWithContent(newLineContent, true)
-	}
-	e.lines = append(e.lines, nil)
-	if e.lineIndex == len(e.lines)-1 {
-		e.lines[e.lineIndex] = newLine
-	} else {
-		copy(e.lines[e.lineIndex+1:], e.lines[e.lineIndex:])
-		e.lines[e.lineIndex] = newLine
-	}
-	e.cursorX = 0
-}
-
-func (e *Editor) moveCursor(dx, dy int) {
-	maxCursorY := min(e.viewportH-1, e.cursorY+(len(e.lines)-e.lineIndex-1))
-	e.lineIndex += dy
-	if e.lineIndex < 0 {
-		e.lineIndex = 0
-	} else if e.lineIndex >= len(e.lines) {
-		e.lineIndex = len(e.lines) - 1
-	}
-	e.cursorY += dy
-
-	if e.cursorY < 0 {
-		e.cursorY = 0
-	} else if e.cursorY > maxCursorY {
-		e.cursorY = maxCursorY
-	}
-
-	e.cursorX += dx
-	if e.cursorX < 0 {
-		e.cursorX = 0
-	}
-	maxLen := e.lines[e.lineIndex].Len()
-	if e.cursorX > maxLen {
-		e.cursorX = maxLen
-	}
-	e.lines[e.lineIndex].moveCursor(e.cursorX)
-}
-
-func (e *Editor) refreshScreen() {
+func (s *Editor) refreshScreen() {
 	// TODO: can I only redraw the changed lines?
-	e.screen.Clear()
-	screenW, screenH := e.screen.Size()
-	e.viewportW = screenW
-	e.viewportH = screenH - 1
-	for x, r := range e.getInfoLine() {
-		e.screen.SetContent(x, screenH-1, r, nil, tcell.StyleDefault)
-	}
+	s.screen.Clear()
+	s.screen.HideCursor()
+	screenW, screenH := s.screen.Size()
+	s.root.SetSize(layout.Size{
+		Width:  screenW,
+		Height: screenH,
+	})
+	s.root.Render(s.screen, layout.Point{
+		X: 0,
+		Y: 0,
+	})
 
-	minLine := e.lineIndex - e.cursorY
-	maxLine := e.lineIndex + (e.viewportH - e.cursorY)
-
-	showCursor := true
-	screenLine := 0
-	for y, line := range e.lines {
-		if y < minLine || y >= maxLine {
-			continue
-		}
-		for x, r := range line.Runes() {
-			if x == e.cursorX && y == e.lineIndex {
-				showCursor = false
-				e.screen.SetContent(x, screenLine, r, nil, e.cursorPositionStyle)
-				continue
-			}
-			e.screen.SetContent(x, screenLine, r, nil, e.defaultStyle)
-		}
-		screenLine++
-	}
-	if showCursor {
-		e.screen.ShowCursor(e.cursorX, e.cursorY)
-	} else {
-		e.screen.HideCursor()
-	}
-	e.screen.Show()
+	s.screen.Show()
 }
 
-func (e *Editor) getInfoLine() string {
-	if e.mode == ModeCommand {
-		return fmt.Sprintf(":%s", string(e.pendingCommand))
-	}
-	mode := "VIEW"
-	if e.mode == ModeInsert {
-		mode = "INSERT"
-	}
-	return fmt.Sprintf("-- %s --", mode)
-}
-
-func (e *Editor) executeCommand() {
-	cmd := string(e.pendingCommand)
-	e.pendingCommand = nil
-	e.mode = ModeView
+func (s *Editor) executeCommand() {
+	cmd := string(s.state.GetCommand())
+	s.state.ClearCommand()
+	s.state.SetMode(ModeView)
 	if strings.Contains(cmd, "q") {
-		e.finished = true
+		s.state.SetFinished()
 		return
 	}
 
 	// TODO : implement commands write
+}
+
+func (s *Editor) getActiveTab() *Tab {
+	return s.window.GetActiveTab()
 }
