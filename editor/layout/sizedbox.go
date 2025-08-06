@@ -9,9 +9,10 @@ var _ Element = (*SizedBox)(nil)
 // SizedBox represents a sized box
 type SizedBox struct {
 	BaseElement
-	Border  Border
-	Content string
-	Child   Element
+	Border    Border
+	Content   string
+	TextColor tcell.Color
+	Child     Element
 	// Size original size
 	Size Size
 }
@@ -103,7 +104,7 @@ func (b *SizedBox) Render(screen tcell.Screen, mountPoint Point) Size {
 
 	if b.Content != "" {
 		p2Delta := Size{Width: renderSize.Width - p1Delta.Width, Height: renderSize.Height - p1Delta.Height}
-		DrawText(screen, mountPoint.AddSize(p1Delta), mountPoint.AddSize(p2Delta), b.Content)
+		DrawText(screen, mountPoint.AddSize(p1Delta), mountPoint.AddSize(p2Delta), b.Content, b.TextColor)
 	} else if b.Child != nil {
 		b.Child.Render(screen, mountPoint.AddSize(p1Delta))
 	}

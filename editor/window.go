@@ -103,8 +103,10 @@ func (s *Window) getTitleComponent() layout.Element {
 		isFirst := i == 0
 		var content string
 		isLast := i == tabCount-1
+		var color tcell.Color
 		if i == s.activeTab {
 			content = " > " + tab.name + " "
+			color = tcell.ColorGreen
 		} else {
 			content = "   " + tab.name + " "
 		}
@@ -118,8 +120,9 @@ func (s *Window) getTitleComponent() layout.Element {
 				BottomRightTee: tcell.RuneBTee,
 				BottomLeftTee:  lo.Ternary(isFirst, tcell.RuneLTee, 0),
 			},
-			Size:    layout.Size{Width: len(content) + lo.Ternary(isFirst, 2, 1), Height: 3},
-			Content: content,
+			TextColor: color,
+			Size:      layout.Size{Width: len(content) + lo.Ternary(isFirst, 2, 1), Height: 3},
+			Content:   content,
 		})
 	}
 	// add last border
@@ -143,19 +146,23 @@ func (s *Window) MoveCursor(dx, dy int) {
 func (s *Window) initEventListeners() {
 	OnEvent(func(e KeyEvent) {
 		if e.Target != s {
+			switch e.Ev.Key() {
+			case tcell.KeyCtrlQ:
+				s.PreviousTab()
+			case tcell.KeyCtrlW:
+				s.CloseTab()
+			case tcell.KeyCtrlE:
+				s.NextTab()
+			case tcell.KeyCtrlT:
+				s.AddTab(NewTab("new tab", NewEmptyLine(64)))
+			default:
+				return
+			}
 			return
 		}
 
 		activeTab := s.GetActiveTab()
 		switch e.Ev.Key() {
-		case tcell.KeyCtrlQ:
-			s.PreviousTab()
-		case tcell.KeyCtrlW:
-			s.CloseTab()
-		case tcell.KeyCtrlE:
-			s.NextTab()
-		case tcell.KeyCtrlT:
-			s.AddTab(NewTab("new tab", NewEmptyLine(64)))
 		case tcell.KeyCtrlS:
 			filePath := activeTab.GetPath()
 			if filePath == "" {

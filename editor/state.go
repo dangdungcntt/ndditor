@@ -152,7 +152,11 @@ func (s *State) GetPreferredSize() layout.Size {
 // Render renders the state
 func (s *State) Render(screen tcell.Screen, point layout.Point) layout.Size {
 	renderSize := s.GetRenderSize()
-	layout.DrawText(screen, point, point.AddSize(renderSize), s.getInfoLine())
+	var color tcell.Color
+	if s.errorMessage != "" {
+		color = tcell.ColorRed
+	}
+	layout.DrawText(screen, point, point.AddSize(renderSize), s.getInfoLine(), color)
 	if s.IsMode(ModeCommand) {
 		screen.ShowCursor(point.X+s.cursorX+1, point.Y)
 	}
