@@ -26,7 +26,7 @@ type pair[K any, V any] struct {
 }
 
 func collect2Entries[K any, V any](seq iter.Seq2[K, V]) []pair[K, V] {
-	var res []pair[K, V]
+	res := make([]pair[K, V], 0, 10)
 	for k, r := range seq {
 		res = append(res, pair[K, V]{k, r})
 	}

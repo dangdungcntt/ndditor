@@ -3,6 +3,7 @@ module github.com/dangdungcntt/ndditor
 go 1.24.5
 
 require (
+	github.com/btvoidx/mint v0.4.3
 	github.com/gdamore/tcell/v2 v2.8.1
 	github.com/samber/lo v1.51.0
 	github.com/test-go/testify v1.1.4

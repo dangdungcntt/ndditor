@@ -1,8 +1,12 @@
+// NDDitor
+// Copyright (c) 2025, Dung Nguyen Dang <dangdungcntt@gmail.com>
+// https://github.com/dangdungcntt/ndditor
 package main
 
 import (
 	"github.com/dangdungcntt/ndditor/editor"
 	"log"
+	"os"
 
 	"github.com/gdamore/tcell/v2"
 )
@@ -19,5 +23,10 @@ func main() {
 
 	screen.SetCursorStyle(tcell.CursorStyleSteadyBlock)
 
-	editor.NewEditor(screen).Run()
+	var args []string
+	if len(os.Args) > 1 {
+		args = os.Args[1:]
+	}
+
+	editor.NewEditor(screen).Run(args)
 }

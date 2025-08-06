@@ -6,20 +6,23 @@ import (
 
 var _ Element = (*Row)(nil)
 
+// Row represents a row
 type Row struct {
 	Children []Element
 }
 
+// GetName returns the name of the row
 func (c *Row) GetName() string {
 	return "Row"
 }
 
-func (c *Row) SetSize(size Size) {
-	var sizeByIndexes []Size
+// SetRenderSize sets the render size
+func (c *Row) SetRenderSize(size Size) {
+	sizeByIndexes := make([]Size, 0, len(c.Children))
 	var missingWidthIndexes []int
 	remainingWidth := size.Width
 	for index, child := range c.Children {
-		childSize := child.GetSize()
+		childSize := child.GetPreferredSize()
 		if childSize.Width == 0 {
 			missingWidthIndexes = append(missingWidthIndexes, index)
 		} else {
@@ -44,16 +47,18 @@ func (c *Row) SetSize(size Size) {
 	}
 
 	for index, child := range c.Children {
-		child.SetSize(sizeByIndexes[index])
+		child.SetRenderSize(sizeByIndexes[index])
 	}
 }
 
-func (c *Row) GetSize() Size {
+// GetPreferredSize returns the preferred size of the row which is calculated by
+// getting the max preferred height of all children and the sum of preferred width
+func (c *Row) GetPreferredSize() Size {
 	size := Size{}
 	isUnknownWidth := false
 
 	for _, child := range c.Children {
-		childSize := child.GetSize()
+		childSize := child.GetPreferredSize()
 		if childSize.Width == 0 {
 			isUnknownWidth = true
 		}
@@ -68,10 +73,14 @@ func (c *Row) GetSize() Size {
 	return size
 }
 
-func (c *Row) Render(screen tcell.Screen, mountPoint Point) {
+// Render renders the row
+func (c *Row) Render(screen tcell.Screen, mountPoint Point) Size {
+	renderSize := Size{}
 	for _, child := range c.Children {
-		child.Render(screen, mountPoint)
-		childSize := child.GetSize()
-		mountPoint.X += childSize.Width
+		childRenderSize := child.Render(screen, mountPoint)
+		renderSize.Height = max(renderSize.Height, childRenderSize.Height)
+		renderSize.Width += childRenderSize.Width
+		mountPoint.X += childRenderSize.Width
 	}
+	return renderSize
 }

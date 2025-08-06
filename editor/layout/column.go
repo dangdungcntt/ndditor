@@ -6,20 +6,23 @@ import (
 
 var _ Element = (*Column)(nil)
 
+// Column represents a column
 type Column struct {
 	Children []Element
 }
 
+// GetName returns the name of the element
 func (c *Column) GetName() string {
 	return "Column"
 }
 
-func (c *Column) SetSize(size Size) {
-	var sizeByIndexes []Size
+// SetRenderSize sets the render size, and calculates the render size of all children
+func (c *Column) SetRenderSize(size Size) {
+	sizeByIndexes := make([]Size, 0, len(c.Children))
 	var missingHeightIndexes []int
 	remainingHeight := size.Height
 	for index, child := range c.Children {
-		childSize := child.GetSize()
+		childSize := child.GetPreferredSize()
 		if childSize.Height == 0 {
 			missingHeightIndexes = append(missingHeightIndexes, index)
 		} else {
@@ -45,16 +48,17 @@ func (c *Column) SetSize(size Size) {
 	}
 
 	for index, child := range c.Children {
-		child.SetSize(sizeByIndexes[index])
+		child.SetRenderSize(sizeByIndexes[index])
 	}
 }
 
-func (c *Column) GetSize() Size {
+// GetPreferredSize returns the preferred size of the column
+func (c *Column) GetPreferredSize() Size {
 	size := Size{}
 	isUnknownHeight := false
 
 	for _, child := range c.Children {
-		childSize := child.GetSize()
+		childSize := child.GetPreferredSize()
 		if childSize.Height == 0 {
 			isUnknownHeight = true
 		}
@@ -68,10 +72,14 @@ func (c *Column) GetSize() Size {
 	return size
 }
 
-func (c *Column) Render(screen tcell.Screen, mountPoint Point) {
+// Render renders the column
+func (c *Column) Render(screen tcell.Screen, mountPoint Point) Size {
+	renderSize := Size{}
 	for _, child := range c.Children {
-		child.Render(screen, mountPoint)
-		childSize := child.GetSize()
-		mountPoint.Y += childSize.Height
+		childRenderSize := child.Render(screen, mountPoint)
+		renderSize.Width = max(renderSize.Width, childRenderSize.Width)
+		renderSize.Height += childRenderSize.Height
+		mountPoint.Y += renderSize.Height
 	}
+	return renderSize
 }

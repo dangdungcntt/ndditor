@@ -1,6 +1,7 @@
 package editor
 
 import (
+	"fmt"
 	"github.com/dangdungcntt/ndditor/editor/layout"
 	"github.com/gdamore/tcell/v2"
 	"github.com/samber/lo"
@@ -8,41 +9,51 @@ import (
 
 var _ layout.Element = (*Window)(nil)
 
+// Window represents a list of tabs
 type Window struct {
-	size      layout.Size
+	layout.BaseElement
 	tabs      []*Tab
 	activeTab int
 }
 
+// NewWindow creates a new window with an empty tab and registers event listeners
 func NewWindow() *Window {
-	return &Window{}
+	w := &Window{}
+	w.initEventListeners()
+	return w
 }
 
+// GetActiveTab returns the active tab
 func (s *Window) GetActiveTab() *Tab {
 	return s.tabs[s.activeTab]
 }
 
+// SetActiveTab sets the active tab
 func (s *Window) SetActiveTab(index int) {
 	s.activeTab = index
 }
 
+// AddTab adds a new tab
 func (s *Window) AddTab(tab *Tab) {
 	s.tabs = append(s.tabs, tab)
 	s.SetActiveTab(len(s.tabs) - 1)
 }
 
+// PreviousTab moves to the previous tab
 func (s *Window) PreviousTab() {
 	if s.activeTab > 0 {
 		s.SetActiveTab(s.activeTab - 1)
 	}
 }
 
+// NextTab moves to the next tab
 func (s *Window) NextTab() {
 	if s.activeTab < len(s.tabs)-1 {
 		s.SetActiveTab(s.activeTab + 1)
 	}
 }
 
+// CloseTab closes the active tab
 func (s *Window) CloseTab() {
 	if len(s.tabs) > 1 {
 		s.tabs = append(s.tabs[:s.activeTab], s.tabs[s.activeTab+1:]...)
@@ -51,14 +62,22 @@ func (s *Window) CloseTab() {
 		}
 	} else {
 		s.tabs = []*Tab{}
+		s.AddTab(NewTab("new tab", NewEmptyLine(64)))
 	}
 }
 
-func (s *Window) SetSize(size layout.Size) {
-	s.size = size
+// GetPreferredSize returns the preferred size of the window
+func (s *Window) GetPreferredSize() layout.Size {
+	return layout.Size{} // Auto size
 }
 
-func (s *Window) Render(screen tcell.Screen, point layout.Point) {
+// GetName returns the name of the window
+func (s *Window) GetName() string {
+	return "Window"
+}
+
+// Render renders the window
+func (s *Window) Render(screen tcell.Screen, point layout.Point) layout.Size {
 	// render list tab names
 	column := layout.Column{
 		Children: []layout.Element{
@@ -73,21 +92,13 @@ func (s *Window) Render(screen tcell.Screen, point layout.Point) {
 			},
 		},
 	}
-	column.SetSize(s.size)
-	column.Render(screen, point)
-}
-
-func (s *Window) GetSize() layout.Size {
-	return s.size
-}
-
-func (s *Window) GetName() string {
-	return "Window"
+	column.SetRenderSize(s.GetRenderSize())
+	return column.Render(screen, point)
 }
 
 func (s *Window) getTitleComponent() layout.Element {
-	var titles []layout.Element
 	tabCount := len(s.tabs)
+	titles := make([]layout.Element, 0, tabCount+1)
 	for i, tab := range s.tabs {
 		isFirst := i == 0
 		var content string
@@ -122,4 +133,60 @@ func (s *Window) getTitleComponent() layout.Element {
 	return &layout.Row{
 		Children: titles,
 	}
+}
+
+// MoveCursor moves the cursor in the active tab
+func (s *Window) MoveCursor(dx, dy int) {
+	s.GetActiveTab().MoveCursor(dx, dy)
+}
+
+func (s *Window) initEventListeners() {
+	OnEvent(func(e KeyEvent) {
+		if e.Target != s {
+			return
+		}
+
+		activeTab := s.GetActiveTab()
+		switch e.Ev.Key() {
+		case tcell.KeyCtrlQ:
+			s.PreviousTab()
+		case tcell.KeyCtrlW:
+			s.CloseTab()
+		case tcell.KeyCtrlE:
+			s.NextTab()
+		case tcell.KeyCtrlT:
+			s.AddTab(NewTab("new tab", NewEmptyLine(64)))
+		case tcell.KeyCtrlS:
+			filePath := activeTab.GetPath()
+			if filePath == "" {
+				GlobalState.SetMode(ModeCommand)
+				GlobalState.WriteToCommand("path ")
+				break
+			}
+			err := activeTab.Save()
+			if err != nil {
+				GlobalState.ToastMessage(fmt.Sprintf("err: %v", err))
+			}
+		case tcell.KeyEnter:
+			if GlobalState.IsMode(ModeInsert) {
+				activeTab.InsertNewline()
+			}
+		case tcell.KeyBackspace, tcell.KeyBackspace2:
+			if GlobalState.IsMode(ModeInsert) {
+				activeTab.Backspace()
+			}
+		case tcell.KeyDelete:
+			if GlobalState.IsMode(ModeInsert) {
+				activeTab.Delete()
+			}
+		default:
+			if e.Ev.Rune() == 0 {
+				return
+			}
+			if GlobalState.IsMode(ModeInsert) && s.IsFocused() {
+				activeTab.InsertRune(e.Ev.Rune())
+				return
+			}
+		}
+	})
 }

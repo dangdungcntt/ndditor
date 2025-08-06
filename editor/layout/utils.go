@@ -4,20 +4,24 @@ import (
 	"github.com/gdamore/tcell/v2"
 )
 
+// DrawText draws text from (x1, y1) to (x2, y2)
 func DrawText(screen tcell.Screen, p1 Point, p2 Point, content string) {
 	drawText(screen, p1.X, p1.Y, p2.X, p2.Y, tcell.StyleDefault, content)
 }
 
+// DrawBox draws a box from (x1, y1) to (x2, y2)
 func DrawBox(screen tcell.Screen, p1 Point, p2 Point) {
 	drawBox(screen, p1.X, p1.Y, p2.X, p2.Y, tcell.StyleDefault)
 }
 
+// DrawVLine draws a vertical line from (x, y1) to (x, y2)
 func DrawVLine(screen tcell.Screen, x, y1, y2 int) {
 	for row := y1; row <= y2; row++ {
 		screen.SetContent(x, row, tcell.RuneVLine, nil, tcell.StyleDefault)
 	}
 }
 
+// DrawHLine draws a horizontal line from (x1, y) to (x2, y)
 func DrawHLine(screen tcell.Screen, y, x1, x2 int) {
 	for col := x1; col <= x2; col++ {
 		screen.SetContent(col, y, tcell.RuneHLine, nil, tcell.StyleDefault)
@@ -61,7 +65,7 @@ func drawBox(s tcell.Screen, x1, y1, x2, y2 int, style tcell.Style) {
 func drawText(s tcell.Screen, x1, y1, x2, y2 int, style tcell.Style, text string) {
 	row := y1
 	col := x1
-	for _, r := range []rune(text) {
+	for _, r := range text {
 		s.SetContent(col, row, r, nil, style)
 		col++
 		if col >= x2 {

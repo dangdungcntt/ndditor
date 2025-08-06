@@ -6,7 +6,7 @@ Simple vim-like text editor written in Go.
 
 - [x] insert mode
 - [x] quit
-- [ ] write
+- [x] write
 
 ## Data Structure
 

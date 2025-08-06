@@ -1,132 +1,133 @@
+// Package editor provides a text editor
 package editor
 
 import (
+	"fmt"
 	"github.com/dangdungcntt/ndditor/editor/layout"
+	"github.com/dangdungcntt/ndditor/editor/logger"
 	"github.com/gdamore/tcell/v2"
+	"log"
+	"regexp"
 	"strings"
 )
 
+// GlobalState is the global state of the editor
+var GlobalState *State
+
+// Editor is the main editor
 type Editor struct {
-	screen tcell.Screen
-	state  *State
-	root   layout.Element
-	window *Window
+	events         chan tcell.Event
+	screen         tcell.Screen
+	root           layout.Element
+	window         *Window
+	focusedElement CursorEventListener
 }
 
+// NewEditor creates a new editor
 func NewEditor(screen tcell.Screen) *Editor {
-	window := NewWindow()
-	tab := NewTab("new tab", NewEmptyLine(64))
-	window.AddTab(tab)
-	state := &State{
-		mode: ModeView,
-	}
+	GlobalState = NewState()
 	return &Editor{
 		screen: screen,
-		state:  state,
-		window: window,
-		root: &layout.Column{
-			Children: []layout.Element{
-				window,
-				state,
-			},
-		},
+		events: make(chan tcell.Event),
 	}
 }
 
-func (s *Editor) Run() {
-	s.refreshScreen()
+// Run starts the editor
+func (s *Editor) Run(args []string) {
+	s.initEventListeners()
+	go s.eventLoop()
 
+	s.window = s.initWindow(args)
+	s.focusedElement = s.window
+	s.root = &layout.Column{
+		Children: []layout.Element{
+			s.window,
+			GlobalState,
+		},
+	}
+
+	s.eventConsumer()
+}
+
+func (s *Editor) initWindow(args []string) *Window {
+	window := NewWindow()
+
+	if len(args) == 0 {
+		tab := NewTab("new tab", NewEmptyLine(64))
+		window.AddTab(tab)
+		return window
+	}
+	filePath := args[0]
+
+	tab, err := NewTabFromPath(filePath)
+	if err != nil {
+		log.Fatalf("error reading file: %s", err)
+	}
+	tab.SetPath(filePath)
+	window.AddTab(tab)
+
+	return window
+}
+
+func (s *Editor) eventLoop() {
 	for {
 		ev := s.screen.PollEvent()
+		if GlobalState.IsFinished() {
+			return
+		}
 
-		switch ev := ev.(type) {
+		s.events <- ev
+	}
+}
+
+func (s *Editor) eventConsumer() {
+	s.render()
+
+	for tEvent := range s.events {
+		switch ev := tEvent.(type) {
 		case *tcell.EventResize:
 			s.screen.Sync()
-			s.refreshScreen()
+			s.render()
 		case *tcell.EventKey:
+			logger.WriteLog(ev.Modifiers(), ev.Name(), ev.Key(), ev.Rune())
 			switch ev.Key() {
 			case tcell.KeyCtrlC:
 				return
-			case tcell.KeyCtrlQ:
-				s.window.PreviousTab()
-			case tcell.KeyCtrlW:
-				s.window.CloseTab()
-			case tcell.KeyCtrlE:
-				s.window.NextTab()
-			case tcell.KeyCtrlT:
-				s.window.AddTab(NewTab("new tab", NewEmptyLine(64)))
-			case tcell.KeyEscape:
-				if !s.state.IsMode(ModeView) {
-					s.state.mode = ModeView
-					break
-				}
-			case tcell.KeyEnter:
-				if s.state.IsMode(ModeCommand) {
-					s.executeCommand()
-					break
-				}
-				if s.state.IsMode(ModeInsert) {
-					s.getActiveTab().InsertNewline()
-					break
-				}
-			case tcell.KeyBackspace, tcell.KeyBackspace2:
-				if s.state.IsMode(ModeCommand) {
-					s.state.DeleteLastRuneFromCommand()
-					break
-				}
-				if s.state.IsMode(ModeInsert) {
-					s.getActiveTab().Backspace()
-					break
-				}
-			case tcell.KeyDelete:
-				if s.state.IsMode(ModeInsert) {
-					s.getActiveTab().Delete()
-					break
-				}
 			case tcell.KeyLeft:
-				s.getActiveTab().MoveCursor(-1, 0)
+				s.moveCursor(-1, 0)
 			case tcell.KeyRight:
-				s.getActiveTab().MoveCursor(1, 0)
+				s.moveCursor(1, 0)
 			case tcell.KeyUp:
-				s.getActiveTab().MoveCursor(0, -1)
+				s.moveCursor(0, -1)
 			case tcell.KeyDown:
-				s.getActiveTab().MoveCursor(0, 1)
+				s.moveCursor(0, 1)
 			default:
-				if ev.Rune() == 0 {
-					break
-				}
-				if s.state.IsMode(ModeView) {
-					switch ev.Rune() {
-					case 'i':
-						s.state.SetMode(ModeInsert)
-					case ':':
-						s.state.SetMode(ModeCommand)
-					}
-					break
-				}
-				if s.state.IsMode(ModeCommand) {
-					s.state.AppendToCommand(ev.Rune())
-					break
-				}
-				if s.state.IsMode(ModeInsert) {
-					s.getActiveTab().InsertRune(ev.Rune())
-					break
+				if GlobalState.IsMode(ModeView) {
+					EmitEvent(KeyEvent{
+						Ev: ev,
+					})
+				} else {
+					EmitEvent(KeyEvent{
+						Target: s.focusedElement,
+						Ev:     ev,
+					})
 				}
 			}
-			s.refreshScreen()
+			s.render()
 		}
-		if s.state.IsFinished() {
+		if GlobalState.IsFinished() {
+			close(s.events)
 			return
 		}
 	}
 }
 
-func (s *Editor) refreshScreen() {
+func (s *Editor) render() {
 	// TODO: can I only redraw the changed lines?
 	s.screen.Clear()
 	s.screen.HideCursor()
 	screenW, screenH := s.screen.Size()
-	s.root.SetSize(layout.Size{
+	s.root.SetRenderSize(layout.Size{
 		Width:  screenW,
 		Height: screenH,
 	})
@@ -138,18 +139,61 @@ func (s *Editor) refreshScreen() {
 	s.screen.Show()
 }
 
-func (s *Editor) executeCommand() {
-	cmd := string(s.state.GetCommand())
-	s.state.ClearCommand()
-	s.state.SetMode(ModeView)
-	if strings.Contains(cmd, "q") {
-		s.state.SetFinished()
-		return
-	}
+func (s *Editor) moveCursor(dx, dy int) {
+	s.focusedElement.MoveCursor(dx, dy)
+}
 
-	// TODO : implement commands write
+var cmdRegex = regexp.MustCompile("[wq]")
+
+func (s *Editor) executeCommand(cmd string) {
+	switch {
+	case strings.HasPrefix(cmd, "path"):
+		s.getActiveTab().SetPath(cmd[5:])
+	case strings.HasPrefix(cmd, "open"):
+		filePath := cmd[5:]
+		tab, err := NewTabFromPath(filePath)
+		if err != nil {
+			GlobalState.ToastMessage(fmt.Sprintf("err: %v", err))
+			return
+		}
+		s.window.AddTab(tab)
+	case cmdRegex.MatchString(cmd):
+		if strings.Contains(cmd, "w") {
+			err := s.getActiveTab().Save()
+			if err != nil {
+				GlobalState.ToastMessage(fmt.Sprintf("err: %v", err))
+				return
+			}
+		}
+
+		if strings.Contains(cmd, "q") {
+			GlobalState.SetFinished()
+		}
+	default:
+		GlobalState.ToastMessage(fmt.Sprintf("unknown command: %s", cmd))
+	}
 }
 
 func (s *Editor) getActiveTab() *Tab {
 	return s.window.GetActiveTab()
+}
+
+func (s *Editor) initEventListeners() {
+	OnEvent(func(e ModeChangedEvent) {
+		if s.focusedElement != nil {
+			s.focusedElement.Blur()
+		}
+		if e.Mode == ModeCommand {
+			s.focusedElement = GlobalState
+		} else {
+			s.focusedElement = s.window
+		}
+		s.focusedElement.Focus()
+	})
+	OnEvent(func(_ StateChangedEvent) {
+		s.render()
+	})
+	OnEvent(func(e SubmittedCommandEvent) {
+		s.executeCommand(e.Command)
+	})
 }
